@@ -8,8 +8,13 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from pequeroku.health import health, readiness
 
 urlpatterns = [
+    # Health check endpoints for Railway/load balancers
+    path("health", health, name="health"),
+    path("readiness", readiness, name="readiness"),
+    
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/v1/", include("platform_api.urls")),
     path("api/account/", include("platform_api.account_urls")),
