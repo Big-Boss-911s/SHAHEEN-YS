@@ -7,11 +7,11 @@ import tailwindcss from "@tailwindcss/vite";
 const rawBase = process.env.FRONT_REACT_BASE ?? "/";
 const ensureLeadingSlash = rawBase.startsWith("/") ? rawBase : `/${rawBase}`;
 const base =
-	ensureLeadingSlash === "/"
-		? "/"
-		: ensureLeadingSlash.endsWith("/")
-			? ensureLeadingSlash
-			: `${ensureLeadingSlash}/`;
+        ensureLeadingSlash === "/"
+                ? "/"
+                : ensureLeadingSlash.endsWith("/")
+                        ? ensureLeadingSlash
+                        : `${ensureLeadingSlash}/`;
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,5 +21,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  server: {
+    host: "0.0.0.0",
+    port: 5000,
+    allowedHosts: true,
   },
 });
