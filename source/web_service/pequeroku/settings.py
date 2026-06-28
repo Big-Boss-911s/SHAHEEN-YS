@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "thisisnotasecretkey")
@@ -176,7 +175,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+# Support TZ environment variable (Railway/Docker)
+TIME_ZONE = os.environ.get("TZ", "UTC")
 
 USE_I18N = True
 
