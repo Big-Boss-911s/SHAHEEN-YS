@@ -76,6 +76,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise must be immediately after SecurityMiddleware and before all others
+    # so it can intercept static file requests before Django's routing layer.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -213,7 +216,20 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+
+# WhiteNoise: serve and compress static files directly from Gunicorn in production.
+# CompressedManifestStaticFilesStorage appends a content hash to each filename
+# so browsers can cache assets indefinitely and the admin CSS always loads correctly.
+# Django 4.2+ uses the STORAGES dict; STATICFILES_STORAGE is the legacy key.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")

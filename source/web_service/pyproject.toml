@@ -24,6 +24,7 @@ redis = "^6.4.0"
 channels-redis = "^4.3.0"
 ddgs = "^9.6.0"
 bs4 = "^0.0.2"
+whitenoise = {extras = ["brotli"], version = "^6.9.0"}
 
 [tool.pyrefly]
 project-includes = ["**/*"]
