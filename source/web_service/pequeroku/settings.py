@@ -72,6 +72,9 @@ INSTALLED_APPS = [
     "vm_manager",
     "ai_services",
     "platform_api",
+    # ── Celery beat/results (SHAHEEN-YS) ──────────────────────
+    "django_celery_beat",
+    "django_celery_results",
 ]
 
 MIDDLEWARE = [
@@ -239,6 +242,17 @@ STORAGES = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
+
+# ── Celery configuration (SHAHEEN-YS) ──────────────────────────
+# Broker: Redis db 0  |  Results backend: Redis db 1
+CELERY_BROKER_URL          = os.environ.get("CELERY_BROKER_URL",     "redis://redis:6379/0")
+CELERY_RESULT_BACKEND      = os.environ.get("CELERY_RESULT_BACKEND", "django-db")
+CELERY_ACCEPT_CONTENT      = ["json"]
+CELERY_TASK_SERIALIZER     = "json"
+CELERY_RESULT_SERIALIZER   = "json"
+CELERY_TIMEZONE            = os.environ.get("TZ", "UTC")
+# Store task results in the database (requires django_celery_results)
+DJANGO_CELERY_RESULTS_TASK_ID_MAX_LENGTH = 191
 
 # Logging: single console handler (stdout) so output is captured by the container
 # runtime / gunicorn. Level is overridable per deploy via LOG_LEVEL; our own apps

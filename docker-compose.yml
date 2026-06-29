@@ -54,8 +54,12 @@ services:
       POSTGRES_DB:       ${DB_NAME:-shaheen}
       POSTGRES_USER:     ${DB_USER:-shaheen}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-shaheensecret}
+      GITEA_DB_NAME:     ${GITEA_DB_NAME:-gitea}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # init-gitea.sh runs automatically on first volume init only
+      # and creates the gitea database inside this Postgres instance
+      - ./docker/postgres-init/init-gitea.sh:/docker-entrypoint-initdb.d/10-init-gitea.sh:ro
     networks:
       - shaheen-net
     healthcheck:
@@ -87,8 +91,9 @@ services:
   # ──────────────────────────────────────────────────────────
   django:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Context = actual Django source tree (has pyproject.toml + manage.py)
+      context: ./source/web_service
+      dockerfile: Dockerfile          # uses source/web_service/Dockerfile (Poetry-based)
     container_name: shaheen-django
     restart: unless-stopped
     command: >
@@ -147,7 +152,7 @@ services:
   # ──────────────────────────────────────────────────────────
   celery:
     build:
-      context: ./backend
+      context: ./source/web_service
       dockerfile: Dockerfile
     container_name: shaheen-celery
     restart: unless-stopped
@@ -177,7 +182,7 @@ services:
   # ──────────────────────────────────────────────────────────
   celery-beat:
     build:
-      context: ./backend
+      context: ./source/web_service
       dockerfile: Dockerfile
     container_name: shaheen-celery-beat
     restart: unless-stopped
@@ -204,15 +209,23 @@ services:
 
   # ──────────────────────────────────────────────────────────
   # 6. OpenVSCode Server (browser-based IDE)
-  #    Access: http://localhost:3000
+  #    Access: http://localhost/vscode/
   # ──────────────────────────────────────────────────────────
   vscode:
     image: gitpod/openvscode-server:latest
     container_name: shaheen-vscode
     restart: unless-stopped
-    environment:
-      # Set a connection token to protect the IDE
-      OPENVSCODE_SERVER_ROOT: /home/.openvscode-server
+    # --host 0.0.0.0            → listen on all interfaces inside the container
+    # --port 3000               → internal port (Nginx proxies this)
+    # --server-base-path /vscode→ must match the Nginx location block (/vscode/)
+    # --without-connection-token→ auth is handled by Nginx; remove for production
+    #                             and use --connection-token instead
+    command: >
+      bash -c "/home/.openvscode-server/bin/openvscode-server
+        --host 0.0.0.0
+        --port 3000
+        --server-base-path /vscode
+        --without-connection-token"
     volumes:
       - ./:/home/workspace:cached          # mount entire project as workspace
       - vscode-data:/home/.openvscode-server/data
@@ -222,6 +235,12 @@ services:
     # Nginx proxies it so it shares the main HTTP port.
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/vscode/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
 
   # ──────────────────────────────────────────────────────────
   # 7. Gitea — self-hosted Git server

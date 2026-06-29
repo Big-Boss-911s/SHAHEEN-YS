@@ -26,6 +26,11 @@ ddgs = "^9.6.0"
 bs4 = "^0.0.2"
 whitenoise = {extras = ["brotli"], version = "^6.9.0"}
 
+# ── Celery (async task queue + scheduler) ──────────────────────
+celery = {extras = ["redis"], version = "^5.4.0"}
+django-celery-beat = "^2.7.0"
+django-celery-results = "^2.5.0"
+
 [tool.pyrefly]
 project-includes = ["**/*"]
 project-excludes = [
