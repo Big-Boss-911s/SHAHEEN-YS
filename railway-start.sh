@@ -5,7 +5,7 @@ set -euo pipefail
 # (i.e. the contents of source/web_service are already at /app)
 
 echo "[railway-start] Running Django migrations..."
-python manage.py migrate
+python manage.py migrate --no-input
 
 echo "[railway-start] Collecting static files..."
 python manage.py collectstatic --no-input
@@ -18,15 +18,15 @@ else
 fi
 
 echo "[railway-start] Starting background workers..."
-(sleep 5; python manage.py reconcile_containers --loop --interval "${RECONCILE_INTERVAL:-30}") &
-(sleep 5; python manage.py prewarm_pool      --loop --interval "${PREWARM_INTERVAL:-30}")    &
-(sleep 5; python manage.py run_worker        --loop --interval "${RUN_WORKER_INTERVAL:-5}")  &
-(sleep 5; python manage.py reap_expired      --loop --interval "${REAP_INTERVAL:-30}")       &
+(sleep 10; python manage.py reconcile_containers --loop --interval "${RECONCILE_INTERVAL:-30}" 2>&1 | true) &
+(sleep 10; python manage.py prewarm_pool      --loop --interval "${PREWARM_INTERVAL:-30}" 2>&1 | true)    &
+(sleep 10; python manage.py run_worker        --loop --interval "${RUN_WORKER_INTERVAL:-5}" 2>&1 | true)  &
+(sleep 10; python manage.py reap_expired      --loop --interval "${REAP_INTERVAL:-30}" 2>&1 | true)       &
 
 echo "[railway-start] Starting Gunicorn with Uvicorn workers on port ${PORT:-8000}..."
 exec gunicorn pequeroku.asgi:application \
   -k uvicorn.workers.UvicornWorker \
-  -w "${WORKERS:-4}" \
+  -w "${WORKERS:-2}" \
   -b "0.0.0.0:${PORT:-8000}" \
   --graceful-timeout 30 \
   --timeout 600 \
