@@ -51,9 +51,14 @@ CSRF_TRUSTED_ORIGINS = [
     for scheme in ("http", "https")
 ]
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/1")
-REDIS_PORT = int(REDIS_URL.split(":")[-1].split("/")[0])
-REDIS_HOST = REDIS_URL.split(":")[1].split("/")[-1]
+REDIS_URL = os.getenv("REDIS_URL", "")
+_REDIS_AVAILABLE = bool(REDIS_URL)
+if _REDIS_AVAILABLE:
+    REDIS_PORT = int(REDIS_URL.split(":")[-1].split("/")[0])
+    REDIS_HOST = REDIS_URL.split(":")[1].split("/")[-1]
+else:
+    REDIS_PORT = 6379
+    REDIS_HOST = "localhost"
 
 REDIS_PREFIX = os.getenv("REDIS_PREFIX", "web_service:")
 
@@ -139,26 +144,40 @@ SPECTACULAR_SETTINGS = {
     "SPECTACULAR_SETTINGS_MERGE": True,
 }
 
-# Django cache: Redis in prod (shared across gunicorn workers, so Idempotency-Key
-# and per-key throttling are consistent). Tests override this with locmem.
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
+# Django cache: Redis in prod, LocMemCache fallback when Redis unavailable.
+if _REDIS_AVAILABLE:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
 
 # Per-API-key rate limit for the public surface (overridable by ops).
 PLATFORM_API_THROTTLE_RATE = os.getenv("PLATFORM_API_THROTTLE_RATE", "120/min")
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [(REDIS_HOST, REDIS_PORT)],
+# Channel layers: Redis in prod, InMemory fallback when Redis unavailable.
+if _REDIS_AVAILABLE:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [(REDIS_HOST, REDIS_PORT)],
+            },
         },
-    },
-}
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 ASGI_APPLICATION = "pequeroku.asgi.application"
 
@@ -244,8 +263,10 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
 # ── Celery configuration (SHAHEEN-YS) ──────────────────────────
-# Broker: Redis db 0  |  Results backend: Redis db 1
-CELERY_BROKER_URL          = os.environ.get("CELERY_BROKER_URL",     "redis://redis:6379/0")
+# Broker: Redis db 0  |  Results backend: Django DB
+# Falls back to memory:// broker when Redis is unavailable (Railway free plan).
+_default_broker = "redis://redis:6379/0" if _REDIS_AVAILABLE else "memory://"
+CELERY_BROKER_URL          = os.environ.get("CELERY_BROKER_URL",     _default_broker)
 CELERY_RESULT_BACKEND      = os.environ.get("CELERY_RESULT_BACKEND", "django-db")
 CELERY_ACCEPT_CONTENT      = ["json"]
 CELERY_TASK_SERIALIZER     = "json"
