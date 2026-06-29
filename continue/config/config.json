@@ -1,0 +1,59 @@
+{
+  "$schema": "https://raw.githubusercontent.com/continuedev/continue/main/extensions/vscode/config_schema.json",
+  "models": [
+    {
+      "title": "GPT-4o (OpenAI)",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "apiKey": "$OPENAI_API_KEY",
+      "contextLength": 128000
+    },
+    {
+      "title": "GPT-4o Mini",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKey": "$OPENAI_API_KEY",
+      "contextLength": 128000
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "GPT-4o Mini (autocomplete)",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "$OPENAI_API_KEY"
+  },
+  "embeddingsProvider": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "apiKey": "$OPENAI_API_KEY"
+  },
+  "contextProviders": [
+    { "name": "code" },
+    { "name": "docs" },
+    { "name": "diff" },
+    { "name": "terminal" },
+    { "name": "problems" },
+    { "name": "folder" },
+    { "name": "codebase" }
+  ],
+  "slashCommands": [
+    { "name": "edit",   "description": "Edit selected code"         },
+    { "name": "comment","description": "Add comments to code"       },
+    { "name": "share",  "description": "Export conversation as MD"  },
+    { "name": "cmd",    "description": "Generate a terminal command" },
+    { "name": "commit", "description": "Generate a git commit message" }
+  ],
+  "customCommands": [
+    {
+      "name": "test",
+      "prompt": "Write a comprehensive set of unit tests for the following code:\n{{{ input }}}",
+      "description": "Write unit tests for the selected code"
+    },
+    {
+      "name": "review",
+      "prompt": "Please do a code review of the following code and suggest improvements:\n{{{ input }}}",
+      "description": "Review selected code"
+    }
+  ],
+  "allowAnonymousTelemetry": false
+}

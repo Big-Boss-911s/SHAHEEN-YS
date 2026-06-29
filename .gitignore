@@ -1,3 +1,24 @@
 # macOS
 .DS_Store
 *.sqlite3
+
+# Environment secrets — never commit real .env
+.env
+
+# Docker volumes / data dirs generated at runtime
+.db_data/
+.redis_data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Build artefacts
+staticfiles/
+dist/
+build/

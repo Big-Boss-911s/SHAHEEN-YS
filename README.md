@@ -1,6 +1,143 @@
-# PequeRoku
+# PequeRoku / SHAHEEN-YS
 
 > Real root-access VMs for you *and* your AI agents: a self-hosted, Replit-style cloud lab in the browser, plus an MCP server and public API that hand the same VMs to any agent — Claude Code, Cursor, or your own.
+
+---
+
+## 🚀 SHAHEEN-YS — Integrated Development Platform
+
+SHAHEEN-YS extends PequeRoku into a **full self-hosted dev platform** you can spin up with a single command using Docker Compose.
+
+### Services
+
+| Service | Description | URL |
+|---------|-------------|-----|
+| **Django** | ASGI backend API | `http://localhost/` |
+| **PostgreSQL 16** | Primary database | internal |
+| **Redis 7** | Cache / message broker | internal |
+| **Celery Worker** | Async task queue | internal |
+| **Celery Beat** | Periodic scheduler | internal |
+| **Nginx** | Reverse proxy | port 80 |
+| **OpenVSCode Server** | Browser-based IDE | `http://localhost/vscode/` |
+| **Gitea** | Self-hosted Git server | `http://localhost/gitea/` |
+| **OpenHands** | AI coding agent | `http://localhost/openhands/` |
+| **Continue AI** | Dev assistant config | `http://localhost/continue/` |
+
+### Quick Start
+
+```bash
+# 1. Clone and enter the project
+git clone <repo-url> && cd <repo>
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env — set SECRET_KEY, DB_PASSWORD, OPENAI_API_KEY
+
+# 3. Build and start (first run)
+./start.sh --build
+
+# OR manually:
+docker compose build
+docker compose up -d
+```
+
+### Start / Stop / Logs
+
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (⚠ deletes database data)
+docker compose down -v
+
+# Tail logs from all services
+docker compose logs -f
+
+# Tail logs from a specific service
+docker compose logs -f django
+
+# Restart a single service
+docker compose restart nginx
+```
+
+### Update the Platform
+
+```bash
+# Pull latest images
+docker compose pull
+
+# Rebuild custom images (Django, Continue AI)
+docker compose build --no-cache
+
+# Apply changes
+docker compose up -d
+```
+
+### Add a New Service
+
+1. Add a new block under `services:` in `docker-compose.yml`.
+2. Connect it to `shaheen-net` network.
+3. Add a named volume if it needs persistence.
+4. Add an `upstream` block and `location` block in `nginx/default.conf` to expose it.
+5. Run `docker compose up -d --no-deps <new-service>` to start it.
+
+Example skeleton:
+
+```yaml
+  myservice:
+    image: myimage:latest
+    container_name: shaheen-myservice
+    restart: unless-stopped
+    networks:
+      - shaheen-net
+    expose:
+      - "8080"
+```
+
+### Health Check
+
+```bash
+./healthcheck.sh
+```
+
+### Project Layout
+
+```
+.
+├── docker-compose.yml      # SHAHEEN-YS platform definition
+├── .env.example            # Environment variable template
+├── start.sh                # One-command start helper
+├── build.sh                # Build helper (Railway + Docker modes)
+├── healthcheck.sh          # Service health verifier
+│
+├── backend/                # Django backend Docker context
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── nginx/                  # Nginx reverse proxy config
+│   └── default.conf
+│
+├── continue/               # Continue AI config server
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── config/
+│       └── config.json     # Continue AI model / slash command config
+│
+├── vscode/                 # OpenVSCode Server customisations
+├── gitea/                  # Gitea customisations
+├── openhands/              # OpenHands customisations
+├── docker/                 # Shared Docker utilities
+│
+└── source/                 # Original PequeRoku source code
+    ├── web_service/        # Django application
+    ├── front-react/        # React frontend
+    └── docker-compose.yaml # Original compose (Railway / standalone)
+```
+
+---
 
 <p align="center">
   <a href="https://github.com/HectorPulido/pequeroku/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/HectorPulido/pequeroku?color=blue"></a>

@@ -1,0 +1,333 @@
+# ============================================================
+# SHAHEEN-YS — Integrated Development Platform
+# docker-compose.yml  (root of repository)
+#
+# Services included:
+#   django        — Django/Daphne ASGI backend (web_service)
+#   db            — PostgreSQL 16
+#   redis         — Redis 7
+#   celery        — Celery async worker
+#   celery-beat   — Celery periodic scheduler
+#   nginx         — Reverse proxy for all services
+#   vscode        — OpenVSCode Server (browser IDE)
+#   gitea         — Self-hosted Git server
+#   openhands     — AI coding agent (OpenHands / OpenDevin)
+#   continue      — Continue AI dev assistant (proxy / config server)
+#
+# Usage:
+#   docker compose build
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+#
+# Secrets / configuration: copy .env.example → .env and fill values.
+# ============================================================
+
+# --------------- Networks ---------------
+networks:
+  shaheen-net:
+    # Single flat network; every service can reach every other by hostname.
+    driver: bridge
+
+# --------------- Persistent volumes ---------------
+volumes:
+  postgres-data:      # PostgreSQL data directory
+  redis-data:         # Redis AOF / RDB persistence
+  gitea-data:         # Gitea repositories + config
+  vscode-data:        # OpenVSCode user data / extensions
+  openhands-data:     # OpenHands state & workspace
+  django-static:      # Collected Django staticfiles (shared with Nginx)
+
+# ==============================================================
+# S E R V I C E S
+# ==============================================================
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # 1. PostgreSQL 16
+  # ──────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: shaheen-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-shaheen}
+      POSTGRES_USER:     ${DB_USER:-shaheen}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shaheensecret}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - shaheen-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-shaheen} -d ${DB_NAME:-shaheen}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────
+  # 2. Redis 7
+  # ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: shaheen-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - shaheen-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ──────────────────────────────────────────────────────────
+  # 3. Django / Daphne ASGI backend
+  # ──────────────────────────────────────────────────────────
+  django:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shaheen-django
+    restart: unless-stopped
+    command: >
+      bash -c "python manage.py migrate --no-input &&
+               python manage.py collectstatic --no-input &&
+               python manage.py createsuperuser --noinput || true &&
+               gunicorn pequeroku.asgi:application
+                 -k uvicorn.workers.UvicornWorker
+                 -w ${GUNICORN_WORKERS:-4}
+                 -b 0.0.0.0:8000
+                 --graceful-timeout 30
+                 --timeout 600"
+    environment:
+      # ── Django core ──────────────────────────────────────
+      SECRET_KEY:         ${SECRET_KEY:-change-me-in-production}
+      DEBUG:              ${DEBUG:-0}
+      ALLOWED_HOSTS:      ${ALLOWED_HOSTS:-localhost,django,nginx}
+      DJANGO_MODULE:      ${DJANGO_MODULE:-pequeroku}
+
+      # ── Database ─────────────────────────────────────────
+      DB_NAME:     ${DB_NAME:-shaheen}
+      DB_USER:     ${DB_USER:-shaheen}
+      DB_PASSWORD: ${DB_PASSWORD:-shaheensecret}
+      DB_HOST:     db
+      DB_PORT:     5432
+
+      # ── Redis / Celery ───────────────────────────────────
+      REDIS_URL:   redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # ── Superuser (first-run only) ───────────────────────
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_EMAIL:    ${DJANGO_SUPERUSER_EMAIL:-admin@shaheen.local}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-adminpass}
+    volumes:
+      - ./source/web_service:/app          # live source mount for development
+      - django-static:/app/staticfiles     # shared with nginx
+    networks:
+      - shaheen-net
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /health is the endpoint defined in pequeroku/urls.py
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  # ──────────────────────────────────────────────────────────
+  # 4. Celery Worker
+  # ──────────────────────────────────────────────────────────
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shaheen-celery
+    restart: unless-stopped
+    command: celery -A ${DJANGO_MODULE:-pequeroku} worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}
+    environment:
+      SECRET_KEY:            ${SECRET_KEY:-change-me-in-production}
+      DEBUG:                 ${DEBUG:-0}
+      DB_NAME:     ${DB_NAME:-shaheen}
+      DB_USER:     ${DB_USER:-shaheen}
+      DB_PASSWORD: ${DB_PASSWORD:-shaheensecret}
+      DB_HOST:     db
+      DB_PORT:     5432
+      REDIS_URL:             redis://redis:6379/0
+      CELERY_BROKER_URL:     redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./source/web_service:/app
+    networks:
+      - shaheen-net
+    depends_on:
+      - db
+      - redis
+      - django
+
+  # ──────────────────────────────────────────────────────────
+  # 5. Celery Beat (periodic scheduler)
+  # ──────────────────────────────────────────────────────────
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shaheen-celery-beat
+    restart: unless-stopped
+    command: celery -A ${DJANGO_MODULE:-pequeroku} beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      SECRET_KEY:            ${SECRET_KEY:-change-me-in-production}
+      DEBUG:                 ${DEBUG:-0}
+      DB_NAME:     ${DB_NAME:-shaheen}
+      DB_USER:     ${DB_USER:-shaheen}
+      DB_PASSWORD: ${DB_PASSWORD:-shaheensecret}
+      DB_HOST:     db
+      DB_PORT:     5432
+      REDIS_URL:             redis://redis:6379/0
+      CELERY_BROKER_URL:     redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./source/web_service:/app
+    networks:
+      - shaheen-net
+    depends_on:
+      - db
+      - redis
+      - django
+
+  # ──────────────────────────────────────────────────────────
+  # 6. OpenVSCode Server (browser-based IDE)
+  #    Access: http://localhost:3000
+  # ──────────────────────────────────────────────────────────
+  vscode:
+    image: gitpod/openvscode-server:latest
+    container_name: shaheen-vscode
+    restart: unless-stopped
+    environment:
+      # Set a connection token to protect the IDE
+      OPENVSCODE_SERVER_ROOT: /home/.openvscode-server
+    volumes:
+      - ./:/home/workspace:cached          # mount entire project as workspace
+      - vscode-data:/home/.openvscode-server/data
+    networks:
+      - shaheen-net
+    # Port 3000 is intentionally NOT published directly;
+    # Nginx proxies it so it shares the main HTTP port.
+    expose:
+      - "3000"
+
+  # ──────────────────────────────────────────────────────────
+  # 7. Gitea — self-hosted Git server
+  #    Access: http://localhost/gitea/
+  # ──────────────────────────────────────────────────────────
+  gitea:
+    image: gitea/gitea:latest
+    container_name: shaheen-gitea
+    restart: unless-stopped
+    environment:
+      USER_UID:  1000
+      USER_GID:  1000
+      GITEA__database__DB_TYPE:  postgres
+      GITEA__database__HOST:     db:5432
+      GITEA__database__NAME:     ${GITEA_DB_NAME:-gitea}
+      GITEA__database__USER:     ${DB_USER:-shaheen}
+      GITEA__database__PASSWD:   ${DB_PASSWORD:-shaheensecret}
+      GITEA__server__ROOT_URL:   ${GITEA_ROOT_URL:-http://localhost/gitea/}
+      GITEA__server__HTTP_PORT:  3001
+      GITEA__server__SSH_PORT:   222
+    volumes:
+      - gitea-data:/data
+    networks:
+      - shaheen-net
+    expose:
+      - "3001"
+    ports:
+      - "${GITEA_SSH_PORT:-222}:22"        # SSH access for git push/pull
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────────────────────
+  # 8. OpenHands — AI coding agent
+  #    Access: http://localhost/openhands/
+  # ──────────────────────────────────────────────────────────
+  openhands:
+    image: docker.all-hands.dev/all-hands-ai/openhands:0.39
+    container_name: shaheen-openhands
+    restart: unless-stopped
+    environment:
+      # OpenHands reads WORKSPACE_BASE to find your code
+      WORKSPACE_BASE: /opt/workspace
+      SANDBOX_RUNTIME_CONTAINER_IMAGE: docker.all-hands.dev/all-hands-ai/runtime:0.39-nikolaik
+      # Optional: provide an LLM key via .env
+      LLM_API_KEY:   ${OPENAI_API_KEY:-}
+      LLM_MODEL:     ${OPENHANDS_LLM_MODEL:-gpt-4o}
+      # Tell OpenHands the base URL it is served from (behind nginx sub-path)
+      SERVER_HOSTNAME: ${OPENHANDS_HOSTNAME:-localhost}
+    volumes:
+      - openhands-data:/opt/openhands
+      - ./:/opt/workspace:cached           # project workspace
+      # OpenHands needs Docker socket to spawn sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - shaheen-net
+    expose:
+      - "3000"
+
+  # ──────────────────────────────────────────────────────────
+  # 9. Continue AI — dev assistant configuration server
+  #    (serves the config.json consumed by the VS Code extension)
+  #    Access: http://localhost/continue/
+  # ──────────────────────────────────────────────────────────
+  continue:
+    build:
+      context: ./continue
+      dockerfile: Dockerfile
+    container_name: shaheen-continue
+    restart: unless-stopped
+    volumes:
+      # Mount into the directory Nginx actually serves from (matches continue/Dockerfile COPY target)
+      - ./continue/config:/usr/share/nginx/html:ro
+    networks:
+      - shaheen-net
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ──────────────────────────────────────────────────────────
+  # 10. Nginx — Reverse proxy (single public entry point)
+  #     Routing table:
+  #       /           → Django API + React frontend static files
+  #       /vscode/    → OpenVSCode Server
+  #       /gitea/     → Gitea
+  #       /openhands/ → OpenHands
+  #       /continue/  → Continue config server
+  # ──────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: shaheen-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - django-static:/usr/share/nginx/static:ro  # Django staticfiles
+    networks:
+      - shaheen-net
+    depends_on:
+      - django
+      - vscode
+      - gitea
+      - openhands
+      - continue

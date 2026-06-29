@@ -1,0 +1,4 @@
+# SHAHEEN-YS — OpenHands directory
+# This directory is reserved for OpenHands customisations.
+# Place any custom agent configs or prompts here.
+# The official OpenHands image is used via docker-compose.yml.

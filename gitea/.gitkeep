@@ -1,0 +1,4 @@
+# SHAHEEN-YS — Gitea directory
+# This directory is reserved for Gitea customisations.
+# Add custom app.ini overrides or theme files here as needed.
+# The gitea/gitea:latest image is used as-is via docker-compose.yml.

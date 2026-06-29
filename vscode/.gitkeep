@@ -1,0 +1,4 @@
+# SHAHEEN-YS — OpenVSCode Server directory
+# This directory is reserved for OpenVSCode Server customisations.
+# The container image (gitpod/openvscode-server) is used as-is.
+# Place any custom startup scripts or extension manifests here.
