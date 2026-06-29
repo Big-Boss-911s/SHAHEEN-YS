@@ -1,10 +1,12 @@
-FROM python:3.13-slim
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBUG=0 \
     PORT=8000 \
-    WORKERS=4
+    WORKERS=2 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -18,16 +20,14 @@ RUN apt-get update && \
       libpq-dev \
       curl \
       ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
-    pip install --upgrade pip && \
-    pip install poetry
+    rm -rf /var/lib/apt/lists/*
 
-COPY source/web_service/pyproject.toml source/web_service/poetry.lock* ./
+RUN pip install --upgrade pip
 
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
-COPY source/web_service .
+COPY source/web_service /app
 
 COPY railway-start.sh /app/railway-start.sh
 RUN chmod +x /app/railway-start.sh
